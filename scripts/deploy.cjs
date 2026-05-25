@@ -168,19 +168,19 @@ try {
 //   c) .open-next/ EPERM from crashed wrangler → wipeBuildDirs removes it
 //   d) opennextjs exits 0 but no .open-next/assets (Windows silent fail)
 //      → verified by assetsExist(); retry once from clean state
-//   e) Stale wrangler process holding file handles → PowerShell Remove-Item
-//      forcefully closes handles even when bash rm -rf fails
+//   e) Stale build output is removed with fs.rmSync after verifying each target
+//      is inside ROOT. No shell delete command is constructed.
 
 function wipeBuildDirs(label) {
   console.log(`[deploy] ${label}: wiping .next and .open-next...`);
   for (const dir of ['.next', '.open-next']) {
     const target = path.join(ROOT, dir);
-    const winTarget = target.replace(/\//g, '\\');
+    const resolved = path.resolve(target);
+    if (resolved !== ROOT && !resolved.startsWith(ROOT + path.sep)) {
+      throw new Error(`Refusing to remove build dir outside ROOT: ${resolved}`);
+    }
     try {
-      execSync(
-        `powershell -c "Remove-Item -Recurse -Force '${winTarget}' -ErrorAction SilentlyContinue"`,
-        { stdio: 'pipe', windowsHide: true }
-      );
+      fs.rmSync(resolved, { recursive: true, force: true, maxRetries: 3, retryDelay: 250 });
     } catch { /* non-fatal */ }
   }
 }

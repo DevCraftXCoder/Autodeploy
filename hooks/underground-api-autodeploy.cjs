@@ -19,6 +19,7 @@ const {
   shouldDebounce,
   appendErrorLog,
   spawnDetachedDeploy,
+  spawnDetachedPackageScript,
 } = require('./hook-utils.cjs');
 
 const SRC_PATTERN = /packages[\\/]underground-api[\\/]src[\\/]/i;
@@ -45,7 +46,11 @@ async function main() {
 
   console.log(`[underground-api-autodeploy] ${path.basename(filePath)} changed — deploying...`);
 
-  spawnDetachedDeploy(DEPLOY_SCRIPT, API_DIR, DEPLOY_LOG, 'underground-api deploy');
+  if (fs.existsSync(DEPLOY_SCRIPT)) {
+    spawnDetachedDeploy(DEPLOY_SCRIPT, API_DIR, DEPLOY_LOG, 'underground-api deploy');
+  } else {
+    spawnDetachedPackageScript(API_DIR, 'deploy', DEPLOY_LOG, 'underground-api deploy');
+  }
   console.log('[underground-api-autodeploy] Deploy spawned in background — Worker updating');
   console.log(`[underground-api-autodeploy] Log: ${DEPLOY_LOG}`);
 }

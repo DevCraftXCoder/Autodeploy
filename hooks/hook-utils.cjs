@@ -16,10 +16,15 @@
 'use strict';
 
 const fs = require('fs');
+const os = require('os');
 const path = require('path');
 const { execSync, spawn } = require('child_process');
 
-const LOCK_DIR = path.join('C:/Za/.claude', '.locks');
+const STATE_DIR = process.env.AUTODEPLOY_STATE_DIR ||
+  (process.env.LOCALAPPDATA
+    ? path.join(process.env.LOCALAPPDATA, 'Autodeploy')
+    : path.join(os.homedir(), '.autodeploy'));
+const LOCK_DIR = process.env.AUTODEPLOY_LOCK_DIR || path.join(STATE_DIR, 'locks');
 
 function ensureLockDir() {
   try { fs.mkdirSync(LOCK_DIR, { recursive: true }); } catch { /* exists */ }
@@ -158,14 +163,69 @@ function appendErrorLog(logFile, context, err) {
     `stdout:\n${redactSecrets(err && err.stdout)}\n` +
     `message: ${redactSecrets(err && err.message)}\n` +
     '---\n';
+  ensureLogParent(logFile);
   try { fs.appendFileSync(logFile, body); } catch { /* non-fatal */ }
+}
+
+function ensureLogParent(logFile) {
+  try { fs.mkdirSync(path.dirname(logFile), { recursive: true }); } catch { /* non-fatal */ }
+}
+
+function npmCommand() {
+  return process.platform === 'win32' ? 'npm.cmd' : 'npm';
+}
+
+function quoteArg(arg) {
+  const text = String(arg);
+  return /[\s"']/g.test(text) ? JSON.stringify(text) : text;
+}
+
+function commandPreview(command, args) {
+  return redactSecrets([command, ...(args || [])].map(quoteArg).join(' '));
+}
+
+// Spawn a detached command without a shell. Use this for npm/wrangler wrappers
+// so hook payloads never become executable command strings.
+function spawnDetachedCommand(command, args, cwd, logFile, label = 'deploy', opts = {}) {
+  ensureLogParent(logFile);
+  const stamp =
+    `\n=== ${label} at ${new Date().toISOString()} ===\n` +
+    `cwd: ${cwd}\n` +
+    `cmd: ${commandPreview(command, args)}\n`;
+  try { fs.appendFileSync(logFile, stamp); } catch { /* non-fatal */ }
+
+  let fd;
+  try {
+    fd = fs.openSync(logFile, 'a');
+    const child = spawn(command, args, {
+      cwd,
+      detached: true,
+      stdio: ['ignore', fd, fd],
+      windowsHide: true,
+      shell: false,
+      env: Object.assign({}, process.env, opts.env || {}),
+    });
+    child.unref();
+  } finally {
+    if (fd !== undefined) {
+      try { fs.closeSync(fd); } catch { /* already closed */ }
+    }
+  }
+}
+
+function spawnDetachedPackageScript(cwd, scriptName, logFile, label = 'deploy', opts = {}) {
+  spawnDetachedCommand(npmCommand(), ['run', scriptName], cwd, logFile, label, opts);
 }
 
 // Spawn a detached Node script (e.g. wrangler deploy). Returns immediately; child
 // continues after hook exit. Parent fd is closed so we don't leak — child inherits
 // its own copy via stdio.
 function spawnDetachedDeploy(scriptPath, cwd, logFile, label = 'deploy') {
-  const stamp = `\n=== ${label} at ${new Date().toISOString()} ===\n`;
+  ensureLogParent(logFile);
+  const stamp =
+    `\n=== ${label} at ${new Date().toISOString()} ===\n` +
+    `cwd: ${cwd}\n` +
+    `cmd: ${commandPreview(process.execPath, [scriptPath])}\n`;
   try { fs.appendFileSync(logFile, stamp); } catch { /* non-fatal */ }
   let fd;
   try {
@@ -206,6 +266,8 @@ module.exports = {
   withGitLock,
   redactSecrets,
   appendErrorLog,
+  spawnDetachedCommand,
+  spawnDetachedPackageScript,
   spawnDetachedDeploy,
   repoIsMidOperation,
 };
