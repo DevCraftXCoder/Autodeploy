@@ -188,6 +188,19 @@ function npmCommand() {
   return process.platform === 'win32' ? 'npm.cmd' : 'npm';
 }
 
+function pnpmCommand() {
+  return process.platform === 'win32' ? 'pnpm.cmd' : 'pnpm';
+}
+
+// Returns 'pnpm' if the repo uses a pnpm lockfile or workspace config, else 'npm'.
+function detectPackageManager(cwd) {
+  const markers = ['pnpm-lock.yaml', 'pnpm-workspace.yaml'];
+  for (const m of markers) {
+    try { fs.accessSync(path.join(cwd, m)); return 'pnpm'; } catch { /* absent */ }
+  }
+  return 'npm';
+}
+
 function quoteArg(arg) {
   const text = String(arg);
   return /[\s"']/g.test(text) ? JSON.stringify(text) : text;
@@ -229,6 +242,17 @@ function spawnDetachedCommand(command, args, cwd, logFile, label = 'deploy', opt
 
 function spawnDetachedPackageScript(cwd, scriptName, logFile, label = 'deploy', opts = {}) {
   spawnDetachedCommand(npmCommand(), ['run', scriptName], cwd, logFile, label, opts);
+}
+
+function spawnDetachedPnpmScript(cwd, scriptName, logFile, label = 'deploy', opts = {}) {
+  spawnDetachedCommand(pnpmCommand(), ['run', scriptName], cwd, logFile, label, opts);
+}
+
+// Auto-selects npm or pnpm based on lockfile presence, then spawns detached.
+function spawnDetachedAutoScript(cwd, scriptName, logFile, label = 'deploy', opts = {}) {
+  const pm = detectPackageManager(cwd);
+  const cmd = pm === 'pnpm' ? pnpmCommand() : npmCommand();
+  spawnDetachedCommand(cmd, ['run', scriptName], cwd, logFile, label, opts);
 }
 
 // Spawn a detached Node script (e.g. wrangler deploy). Returns immediately; child
@@ -287,6 +311,9 @@ module.exports = {
   trimLogFile,
   spawnDetachedCommand,
   spawnDetachedPackageScript,
+  spawnDetachedPnpmScript,
+  spawnDetachedAutoScript,
   spawnDetachedDeploy,
   repoIsMidOperation,
+  detectPackageManager,
 };

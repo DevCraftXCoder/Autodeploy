@@ -79,7 +79,7 @@ Four hooks cover the full Cloudflare Workers stack. All deploy hooks use `spawnD
 |------|---------|----------|---------|-------------|
 | `ev-betta-autodeploy.cjs` | `ev-betta-ui/src/**` edits | 30s | commit + push source + bundle | `spawnDetachedDeploy` → `deploy.cjs` |
 | `underground-api-autodeploy.cjs` | `packages/underground-api/src/**` edits | 60s | none (wrangler-only) | `spawnDetachedDeploy` → `npm run deploy` |
-| `francois-landing-autodeploy.cjs` | `git push` to francois-landing | none | already pushed | `spawnDetachedDeploy` → `deploy.cjs` |
+| `francois-landing-autodeploy.cjs` | `git push` to francois-landing | 60s + in-flight PID | already pushed | `spawnDetachedDeploy` → `deploy.cjs` |
 | `task-complete-autodeploy.cjs` | Claude `Stop`, Codex/manual after-task | 60s-5m per target | none | touched target → `deploy.cjs` or `npm run deploy` |
 
 ### After-Task Deploy
@@ -116,8 +116,12 @@ The shared library used by all hooks:
 | `withGitLock(repoDir, fn)` | Advisory per-repo lock — waits with retry, never fights `index.lock` |
 | `sweepStaleGitLock(repoDir)` | Removes stale `index.lock` files |
 | `appendErrorLog(file, entry)` | Structured error logging with PAT redaction |
-| `spawnDetachedDeploy(script, cwd, logFile, label)` | Detached deploy process — no fd leaks, hook returns immediately |
-| `spawnDetachedPackageScript(cwd, script, logFile, label)` | Detached `npm run <script>` without shell-built command strings |
+| `trimLogFile(file, maxLines?)` | Trims log to last N lines (default 500) before appending — prevents unbounded growth |
+| `detectPackageManager(cwd)` | Returns `'pnpm'` if `pnpm-lock.yaml` or `pnpm-workspace.yaml` exists, else `'npm'` |
+| `spawnDetachedDeploy(script, cwd, logFile, label)` | Detached deploy process — returns child PID for in-flight tracking |
+| `spawnDetachedPackageScript(cwd, script, logFile, label)` | Detached `npm run <script>` |
+| `spawnDetachedPnpmScript(cwd, script, logFile, label)` | Detached `pnpm run <script>` for pnpm monorepos |
+| `spawnDetachedAutoScript(cwd, script, logFile, label)` | Auto-detects npm vs pnpm via lockfile, then spawns |
 | `repoIsMidOperation(repoDir)` | Detects merge/rebase/cherry-pick in progress |
 
 ---
@@ -183,7 +187,7 @@ Edit the `DEBOUNCE_MS` constant in each hook file. Recommended values:
 |------|-----|-------------|-------|
 | ev-betta-autodeploy | 20000ms | 30000ms | React source — fast builds |
 | underground-api-autodeploy | 30000ms | 60000ms | wrangler deploy only |
-| francois-landing-autodeploy | none | none | fires on push, not on save |
+| francois-landing-autodeploy | 60000ms | 60000ms | fires on push; debounce prevents cascade from ev-betta bundle commits |
 
 ---
 
