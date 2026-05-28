@@ -171,6 +171,19 @@ function ensureLogParent(logFile) {
   try { fs.mkdirSync(path.dirname(logFile), { recursive: true }); } catch { /* non-fatal */ }
 }
 
+// Trim a log file to at most maxLines by keeping the tail.
+// Called before appending to prevent unbounded growth (e.g. last-deploy-log).
+const LOG_MAX_LINES = 500;
+function trimLogFile(logFile, maxLines) {
+  const limit = maxLines || LOG_MAX_LINES;
+  try {
+    const content = fs.readFileSync(logFile, 'utf8');
+    const lines = content.split('\n');
+    if (lines.length <= limit) return;
+    fs.writeFileSync(logFile, lines.slice(-limit).join('\n'), 'utf8');
+  } catch { /* non-fatal — if file doesn't exist yet, no-op */ }
+}
+
 function npmCommand() {
   return process.platform === 'win32' ? 'npm.cmd' : 'npm';
 }
@@ -188,6 +201,7 @@ function commandPreview(command, args) {
 // so hook payloads never become executable command strings.
 function spawnDetachedCommand(command, args, cwd, logFile, label = 'deploy', opts = {}) {
   ensureLogParent(logFile);
+  trimLogFile(logFile);
   const stamp =
     `\n=== ${label} at ${new Date().toISOString()} ===\n` +
     `cwd: ${cwd}\n` +
@@ -218,16 +232,18 @@ function spawnDetachedPackageScript(cwd, scriptName, logFile, label = 'deploy', 
 }
 
 // Spawn a detached Node script (e.g. wrangler deploy). Returns immediately; child
-// continues after hook exit. Parent fd is closed so we don't leak — child inherits
-// its own copy via stdio.
+// continues after hook exit. Returns the child PID so callers can track in-flight state.
+// Parent fd is closed so we don't leak — child inherits its own copy via stdio.
 function spawnDetachedDeploy(scriptPath, cwd, logFile, label = 'deploy') {
   ensureLogParent(logFile);
+  trimLogFile(logFile);
   const stamp =
     `\n=== ${label} at ${new Date().toISOString()} ===\n` +
     `cwd: ${cwd}\n` +
     `cmd: ${commandPreview(process.execPath, [scriptPath])}\n`;
   try { fs.appendFileSync(logFile, stamp); } catch { /* non-fatal */ }
   let fd;
+  let childPid = null;
   try {
     fd = fs.openSync(logFile, 'a');
     const child = spawn(process.execPath, [scriptPath], {
@@ -236,12 +252,14 @@ function spawnDetachedDeploy(scriptPath, cwd, logFile, label = 'deploy') {
       stdio: ['ignore', fd, fd],
       windowsHide: true,
     });
+    childPid = child.pid;
     child.unref();
   } finally {
     if (fd !== undefined) {
       try { fs.closeSync(fd); } catch { /* already closed */ }
     }
   }
+  return childPid;
 }
 
 // Returns a marker name if an in-progress git op is detected, else null.
@@ -266,6 +284,7 @@ module.exports = {
   withGitLock,
   redactSecrets,
   appendErrorLog,
+  trimLogFile,
   spawnDetachedCommand,
   spawnDetachedPackageScript,
   spawnDetachedDeploy,
