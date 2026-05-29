@@ -78,9 +78,9 @@ Four hooks cover the full Cloudflare Workers stack. All deploy hooks use `spawnD
 | Hook | Trigger | Debounce | Git Ops | Deploy Path |
 |------|---------|----------|---------|-------------|
 | `ev-betta-autodeploy.cjs` | `ev-betta-ui/src/**` edits | 30s | commit + push source + bundle | `spawnDetachedDeploy` → `deploy.cjs` |
-| `underground-api-autodeploy.cjs` | `packages/underground-api/src/**` edits | 60s | none (wrangler-only) | `spawnDetachedDeploy` → `npm run deploy` |
+| `underground-api-autodeploy.cjs` | `packages/underground-api/src/**` edits | 60s | none (wrangler-only) | `spawnDetachedDeploy` → `pnpm run deploy` |
 | `francois-landing-autodeploy.cjs` | `git push` to francois-landing | 60s + in-flight PID | already pushed | `spawnDetachedDeploy` → `deploy.cjs` |
-| `task-complete-autodeploy.cjs` | Claude `Stop`, Codex/manual after-task | 60s-5m per target | none | touched target → `deploy.cjs` or `npm run deploy` |
+| `task-complete-autodeploy.cjs` | Claude `Stop`, Codex/manual after-task | 60s-5m per target | none | touched target → `deploy.cjs` or `pnpm run deploy` |
 
 ### After-Task Deploy
 
@@ -242,12 +242,12 @@ SKIP_AUDIT=1 node scripts/deploy.cjs
 ### Prerequisites
 
 ```bash
-npm install -g wrangler                      # Cloudflare Workers CLI
-npm install --save-dev @opennextjs/cloudflare # Next.js CF adapter
+pnpm add -g wrangler                         # Cloudflare Workers CLI
+pnpm add -D @opennextjs/cloudflare           # Next.js CF adapter
 npx wrangler login                           # Authenticate
 ```
 
-Cloudflare's current Wrangler docs support either direct `wrangler deploy` or package-manager scripts such as `npm run deploy`; Autodeploy uses the package script path for generic Workers and the project deploy script path for OpenNext projects.
+Cloudflare's current Wrangler docs support either direct `wrangler deploy` or package-manager scripts such as `pnpm run deploy`; Autodeploy uses the package script path for generic Workers and the project deploy script path for OpenNext projects.
 
 ---
 
