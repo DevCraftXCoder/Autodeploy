@@ -39,7 +39,7 @@ Every hook follows the same contract:
 Claude Code (PostToolUse / Stop) or manual run
   │
   ▼
-Hook fires (ev-betta-autodeploy | underground-api-autodeploy | francois-landing-autodeploy | task-complete-autodeploy)
+Hook fires
   │
   ├─ Guard: in-flight check (PID alive — skip if deploy is running)
   ├─ Guard: debounce (stamp file — skip if last deploy < 30s ago)
@@ -115,9 +115,9 @@ Four hooks cover the full Cloudflare Workers stack. All deploy hooks use `spawnD
 
 | Hook | Trigger | Debounce | Git Ops | Deploy Path |
 |------|---------|----------|---------|-------------|
-| `ev-betta-autodeploy.cjs` | React SPA source edits | 30s | commit + push source + bundle | detached → deploy script |
-| `underground-api-autodeploy.cjs` | Hono CF Worker source edits | 60s | wrangler deploy only | detached wrangler |
-| `francois-landing-autodeploy.cjs` | git push to Next.js repo | 30s | detected from push output | detached → deploy script |
+| `react-autodeploy.cjs` | React SPA source edits | 30s | commit + push source + bundle | detached → deploy script |
+| `api-autodeploy.cjs` | Hono CF Worker source edits | 60s | wrangler deploy only | detached wrangler |
+| `landing-autodeploy.cjs` | git push to Next.js repo | 30s | detected from push output | detached → deploy script |
 | `task-complete-autodeploy.cjs` | Claude Stop event | 5 min | detects changed services | multi-target detached |
 
 ### Guard Order (francois-landing)
@@ -126,7 +126,7 @@ Four hooks cover the full Cloudflare Workers stack. All deploy hooks use `spawnD
 push detected
   → in-flight? skip (no point checking debounce if deploy is already running)
   → [skip-deploy] in HEAD? skip (prevents redeploy loop from build-meta commits)
-  → deployed < 30s ago? skip (prevents cascade from ev-betta bundle commits)
+  → deployed < 30s ago? skip (prevents cascade from bundle commits)
   → spawn detached deploy
 ```
 
@@ -226,10 +226,10 @@ Guarded failure modes: stale `.next` lock, partial `.open-next/assets`, corrupt 
 
 | Hook | Current | Notes |
 |------|---------|-------|
-| `ev-betta-autodeploy` | 30s | React source — fast builds |
-| `underground-api-autodeploy` | 60s | wrangler deploy only — no build |
-| `francois-landing-autodeploy` | 30s | in-flight check handles concurrency; debounce guards rapid back-to-back pushes |
-| `task-complete-autodeploy` | 5 min | after-task; conservative to prevent task-end storm |
+| 30s | React source — fast builds |
+| 60s | wrangler deploy only — no build |
+| 30s | in-flight check handles concurrency; debounce guards rapid back-to-back pushes |
+| 5 min | after-task; conservative to prevent task-end storm |
 
 ---
 
@@ -246,7 +246,7 @@ Copy the hooks to `.claude/hooks/` in your project and register them in `.claude
       {
         "matcher": "Write|Edit",
         "hooks": [
-          { "type": "command", "command": "node .claude/hooks/ev-betta-autodeploy.cjs" }
+          { "type": "command", "command": "node .claude/hooks/autodeploy.cjs" }
         ]
       }
     ],
@@ -289,9 +289,9 @@ npx wrangler login                           # Authenticate
 Autodeploy/
 ├── hooks/
 │   ├── hook-utils.cjs                  # Shared utility library (all hooks import this)
-│   ├── ev-betta-autodeploy.cjs         # React SPA autodeploy hook
-│   ├── underground-api-autodeploy.cjs  # Hono CF Worker autodeploy hook
-│   ├── francois-landing-autodeploy.cjs # Next.js CF Workers autodeploy hook
+│   ├── reactautodeploy.cjs         # React SPA autodeploy hook
+│   ├── api-autodeploy.cjs  # Hono CF Worker autodeploy hook
+│   ├── landing-autodeploy.cjs # Next.js CF Workers autodeploy hook
 │   └── task-complete-autodeploy.cjs    # Claude after-task deploy hook
 ├── scripts/
 │   └── deploy.cjs                      # Full CF Workers deploy (build + deploy + retry)
