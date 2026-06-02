@@ -60,16 +60,19 @@ deploy.cjs (async, Cloudflare Workers)
   │
   ├─ GitHub Deployment API (pending status)
   │
-  ├─ Build integrity pre-flight (detect corrupt build artifacts before attempt 1)
+  ├─ Build integrity pre-flight (detect corrupt .next OR leftover .tmp rename artifacts)
   │
   ├─ Build:
-  │    ├─ wipe build artifacts
+  │    ├─ kill stale wrangler dev (releases .next file handles before wipe)
+  │    ├─ wipe build artifacts (retries rmdir 3× on EBUSY + 1.5s settle delay)
   │    ├─ opennextjs-cloudflare build
   │    ├─ strip large static assets from server bundle
   │    ├─ verify assets exist (guards silent Windows failure)
   │    └─ wrangler deploy
   │
-  ├─ Retry once on failure (full wipe → rebuild → redeploy)
+  ├─ Retry once on failure:
+  │    ├─ EPERM/rename failure → extra 5s backoff before wipe (Windows handle release)
+  │    └─ full wipe → rebuild → redeploy
   ├─ Smoke test (graduated waits: 2s / 5s / 10s — fast propagation, no wasted time)
   ├─ Auto-rollback to prior version if smoke test fails
   ├─ GitHub Deployment API (success/failure status)
@@ -87,9 +90,12 @@ deploy.cjs (async, Cloudflare Workers)
 | Dependency version guard | After 2–3 min of pre-checks | **First thing** — mismatch fixed before pre-checks run |
 | Stale lock detection | 15-min TTL regardless | **Instant** — dead process = stale lock immediately |
 | Blocked lock message | "Concurrent deploy running" | Shows time-to-expire + `DEPLOY_IGNORE_LOCK=1` hint |
-| Build artifact pre-flight | Corrupt `.next` fails attempt 1 silently | Detected upfront — wipe happens **before** attempt 1 |
+| Build artifact pre-flight | Corrupt `.next` fails attempt 1 silently | Detected upfront — wipe before attempt 1; also catches leftover `.tmp` rename artifacts |
 | Deploy progress | Silent | Step-by-step with elapsed time (e.g. `[+47s] Build + upload complete`) |
 | Smoke test waits | 3 × 3s flat (9s minimum) | 2s → 5s → 10s graduated (passes on fast propagation in 2s) |
+| Windows rename failure | Retry wipe ran immediately, hit same locked files | EPERM/EBUSY detected → 5s backoff before retry wipe |
+| rmdir on busy directory | Silent fail, `.next` left partially intact | Retries rmdir 3× with 2s delay + 1.5s settle before build |
+| Stale wrangler dev handles | Not cleared — caused EPERM on `.next` files | `wrangler dev` processes terminated before every wipe |
 
 ### Hook Improvements (francois-landing)
 
@@ -164,6 +170,18 @@ Before: 3 attempts × 3s wait = 9s minimum before first result
 After:  attempt 1 → 2s wait, attempt 2 → 5s wait, attempt 3 → 10s wait
         → passes on fast propagation in 2s instead of 9s
 ```
+
+### Windows Build Reliability (Rename Failure Fixes)
+
+On Windows, `next build` uses atomic writes: it writes a temp file (`.js.tmp`) then renames it to the final path. If any process holds that file open — a prior build, `wrangler dev`, or an editor — the rename fails with `EPERM: operation not permitted`. The deploy script handles this at every layer:
+
+| Layer | Problem | Fix |
+|-------|---------|-----|
+| Pre-flight | Leftover `.tmp` files from a failed atomic rename prevent the next build | Detected as corruption signal alongside missing `pages-manifest.json`; wipe triggered before attempt 1 |
+| Before wipe | `wrangler dev` holds handles on `.next` files | Dev server terminated before `rmdir` runs |
+| During wipe | `rmdir /s /q` fails silently on locked files | Retried 3× with 2s delay between attempts |
+| After wipe | Windows retains file handles briefly after process exit | 1.5s settle delay before the build starts |
+| On retry | Attempt 1 EPERM → attempt 2 wipe runs immediately, hits same locks | EPERM/EBUSY detected → 5s backoff before retry wipe |
 
 ### Emergency Flags
 
