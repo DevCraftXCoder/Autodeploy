@@ -89,19 +89,19 @@ Use `task-complete-autodeploy.cjs` when you want deploys at task completion inst
 Manual Codex-friendly run:
 
 ```bash
-node hooks/task-complete-autodeploy.cjs --workspace C:/Za
+node hooks/task-complete-autodeploy.cjs --workspace C:/your/project
 ```
 
 Force every configured target:
 
 ```bash
-node hooks/task-complete-autodeploy.cjs --workspace C:/Za --all
+node hooks/task-complete-autodeploy.cjs --workspace C:/your/project --all
 ```
 
 Dry-run target detection:
 
 ```bash
-node hooks/task-complete-autodeploy.cjs --workspace C:/Za --dry-run
+node hooks/task-complete-autodeploy.cjs --workspace C:/your/project --dry-run
 ```
 
 ### `hook-utils.cjs` — Shared Utilities
@@ -172,7 +172,7 @@ Guarded failure modes: stale `.next/lock`, partial `.open-next/assets`, EPERM fr
 |----------|---------|---------|
 | `SKIP_AUDIT` | `undefined` | Set to `1` to skip npm CVE audit in deploy |
 | `DEBOUNCE_MS` | `30000` | Milliseconds between autodeploy triggers |
-| `AUTODEPLOY_WORKSPACE` | `C:/Za` | Workspace root for after-task target detection |
+| `AUTODEPLOY_WORKSPACE` | `C:/your/project` | Workspace root for after-task target detection |
 | `AUTODEPLOY_STATE_DIR` | `%LOCALAPPDATA%/Autodeploy` or `~/.autodeploy` | Shared Codex/Claude state, logs, and lock base |
 | `AUTODEPLOY_LOCK_DIR` | `<state>/locks` | Override for shared advisory lock files |
 | `AUTODEPLOY_SESSION_FILES` | `<workspace>/.claude/session-files.json` | Optional Claude session-file tracker path |
@@ -220,7 +220,7 @@ To deploy after completed Claude tasks, register the after-task hook in `Stop`:
     "Stop": [
       {
         "hooks": [
-          { "type": "command", "command": "node .claude/hooks/task-complete-autodeploy.cjs --workspace C:/Za" }
+          { "type": "command", "command": "node .claude/hooks/task-complete-autodeploy.cjs --workspace C:/your/project" }
         ]
       }
     ]
